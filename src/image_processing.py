@@ -19,7 +19,7 @@ def modcrop(img, scale):
     return out_img
 
 
-def psnr_calc(ref, img):
+def calc_psnr(ref, img):
     mse = np.mean((ref - img) ** 2)
     if mse == 0:
         return 100
