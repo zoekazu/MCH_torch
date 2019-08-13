@@ -26,8 +26,8 @@ class TrainDataset(Dataset):
         self.transform = transform
 
     def __getitem__(self, index):
-        cnn_inputs = self.dataset.get_input(index)
-        cnn_labels = self.dataset.get_label(index)
+        cnn_inputs = self.dataset.get_input(index).transpose(1, 2, 0)
+        cnn_labels = self.dataset.get_label(index).transpose(1, 2, 0)
         if self.transform:
             return self.transform(cnn_inputs), self.transform(cnn_labels)
         return cnn_inputs, cnn_labels
@@ -98,8 +98,9 @@ class SeparateSmallImgs():
 
 
 class TestDataset(Dataset):
-    def __init__(self, dataset_path, trainsform=None, target_transform=None):
+    def __init__(self, dataset_path, transform=None):
         self.images_files = ImgInDirAsY(dataset_path)
+        self.transform = transform
 
     def __getitem__(self, index):
         ref = self.images_files.read_file(index)
@@ -108,8 +109,11 @@ class TestDataset(Dataset):
                            interpolation=cv2.INTER_CUBIC)
         ref = separate_label(ref, SCALE)[:, SHAVE_SIZE - 1: -(SHAVE_SIZE + 1),
                                          SHAVE_SIZE - 1: -(SHAVE_SIZE + 1)]
-
-        return input.astype(np.uint8) / 255, ref.astype(np.uint8) / 255
+        cnn_input = np.zeros([input.shape[0], input.shape[1], 1], dtype=np.uint8)
+        cnn_input[:, :, 0] = input
+        ref = ref.transpose(1, 2, 0)
+        if self.transform:
+            return self.transform(cnn_input), self.transform(ref)
 
     def __len__(self):
         return self.images_files.files_len()

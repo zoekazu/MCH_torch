@@ -25,16 +25,19 @@ TRAIN_PATH = './dataset/Train'
 TEST_DIR = os.path.join('dataset', 'Test')
 TEST_DATASET_NAMES = ['Set5', 'Set14', 'BSD100']
 
-train_transform = transforms.Compose([transforms.ToTensor()])  # , transforms.Normalize((0.5, ), (0.5, ))])
+train_transform = transforms.Compose([transforms.ToTensor(),
+                                      transforms.Normalize((0.5, ), (0.5, ))])
+
+test_transform = transforms.Compose([transforms.ToTensor()])
 
 train_dataset = TrainDataset(dataset_path=TRAIN_PATH,
-                             transform=None)
+                             transform=train_transform)
 train_loader = torch.utils.data.DataLoader(
     dataset=train_dataset, batch_size=32, shuffle=True)
 
 test_loaders = []
 for test_dataset_name in TEST_DATASET_NAMES:
-    test_dataset = TestDataset(os.path.join(TEST_DIR, test_dataset_name))
+    test_dataset = TestDataset(os.path.join(TEST_DIR, test_dataset_name), transform=test_transform)
     test_loaders.append(torch.utils.data.DataLoader(
         dataset=test_dataset, batch_size=1))
 
@@ -69,11 +72,11 @@ lr_params = [{'params': net.conv1.parameters(), 'lr': 0.0001},
              {'params': net.conv2.parameters(), 'lr': 0.0001},
              {'params': net.conv3.parameters(), 'lr': 0.00001}]
 
-optimizer = optim.SGD(params=lr_params, momentum=0.9, weight_decay=0.0005)
+optimizer = optim.SGD(params=lr_params, momentum=0.9, weight_decay=0.0005, nesterov=True)
 
 print('Show cnn setting', net, optimizer, sep='\n')
 
-NUM_EPOCH = 100000
+NUM_EPOCH = 1000000
 
 # Prepaer training
 df_all_columns_list = ['epoch', 'train_loss', 'val_loss'].extend(
@@ -104,7 +107,7 @@ for epoch in range(1, NUM_EPOCH+1):
     ave_train_loss = train_loss / len(train_loader.dataset)
 
     # Evaluation
-    if epoch % 2000 == 0:
+    if epoch % 10000 == 0:
         torch.save(net.state_dict(), '{}/model_epoch_{}.ckpt'.format(MODEL_DIR, epoch))
         net.eval()
         with torch.no_grad():
@@ -115,7 +118,7 @@ for epoch in range(1, NUM_EPOCH+1):
                 test_file_names = ImgInDirAsY(os.path.join(TEST_DIR, test_dataset_name)).files_name()
                 df_epoch = pd.DataFrame(index=[], columns=['name', 'psnr', 'ssim'])
                 for (cnn_input, cnn_label), test_file_name in zip(test_loader, test_file_names):
-                    cnn_input = cnn_input.unsqueeze(0).float().to(device)
+                    cnn_input = cnn_input.float().to(device)
                     cnn_label = cnn_label.float().to(device)
 
                     cnn_output = net(cnn_input)
@@ -126,13 +129,13 @@ for epoch in range(1, NUM_EPOCH+1):
                     val_cnt += 1
 
                     # convert mat image
-                    cnn_output = cnn_output.cpu().numpy()
+                    cnn_output = cnn_output.cpu().numpy() * 255
                     cnn_output = cnn_output.astype(np.uint8)
-                    cnn_output = composit_output(cnn_output) * 255
+                    cnn_output = composit_output(cnn_output)
 
-                    cnn_label = cnn_label.cpu().numpy()
+                    cnn_label = cnn_label.cpu().numpy() * 255
                     cnn_label = cnn_label.astype(np.uint8)
-                    cnn_label = composit_output(cnn_label) * 255
+                    cnn_label = composit_output(cnn_label)
 
                     # psnr and ssim
                     psnr_result = calc_psnr(cnn_label, cnn_output)
