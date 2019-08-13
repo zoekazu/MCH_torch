@@ -26,8 +26,8 @@ class TrainDataset(Dataset):
         self.transform = transform
 
     def __getitem__(self, index):
-        cnn_inputs = self.dataset.get_input(index) / 255
-        cnn_labels = self.dataset.get_label(index) / 255
+        cnn_inputs = self.dataset.get_input(index)
+        cnn_labels = self.dataset.get_label(index)
         if self.transform:
             return self.transform(cnn_inputs), self.transform(cnn_labels)
         return cnn_inputs, cnn_labels
