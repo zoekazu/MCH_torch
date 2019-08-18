@@ -28,9 +28,9 @@ class TrainDataset(Dataset):
     def __getitem__(self, index):
         cnn_inputs = self.dataset.get_input(index).transpose(1, 2, 0)
         cnn_labels = self.dataset.get_label(index).transpose(1, 2, 0)
+
         if self.transform:
             return self.transform(cnn_inputs), self.transform(cnn_labels)
-        return cnn_inputs, cnn_labels
 
     def __len__(self):
         return self.dataset.result_len()
@@ -39,8 +39,7 @@ class TrainDataset(Dataset):
 class SeparateSmallImgs():
     def __init__(self, dataset_path):
         self.img_files = ImgInDirAsY(dataset_path)
-        self.cnn_inputs = self.prepare_inputs()
-        self.cnn_teaches = self.prepare_labels()
+        self.cnn_inputs, self.cnn_teaches, self.cnt = self.prepare_dataset()
 
     def get_input(self, index):
         return self.cnn_inputs[index, :, :, :]
@@ -48,53 +47,35 @@ class SeparateSmallImgs():
     def get_label(self, index):
         return self.cnn_teaches[index, :, :, :]
 
-    def prepare_inputs(self):
-        cnn_inputs_list = []
-        for hr_img in self.img_files.read_files():
-            hr_img = modcrop(hr_img, SCALE)
-            _wid, _hei = hr_img.shape
-            for i, (y, x) in enumerate(zip(range(0, _hei - INPUT_SIZE*SCALE, STRIDE_SIZE),
-                                           range(0, _wid - INPUT_SIZE*SCALE, STRIDE_SIZE))):
-                hr_patch = hr_img[x: x+INPUT_SIZE*SCALE, y: y+INPUT_SIZE*SCALE]
-                lr_patch = cv2.resize(
-                    hr_patch, dsize=None, fx=1/SCALE, fy=1/SCALE, interpolation=cv2.INTER_CUBIC)
-                lr_patch = lr_patch[AROUND_SHAVE: -AROUND_SHAVE,
-                                    AROUND_SHAVE: -AROUND_SHAVE]
-                lr = np.zeros(
-                    (1, INPUT_SIZE-AROUND_SHAVE*2, INPUT_SIZE-AROUND_SHAVE*2), dtype=np.double)
-                lr[0, :, :] = lr_patch
-                cnn_inputs_list.append(lr)
-        cnn_inputs = np.array(cnn_inputs_list, dtype=np.uint8)
-        return cnn_inputs
-
-    def prepare_labels(self):
-        cnn_labels_list = []
-        for hr_img in self.img_files.read_files():
-            hr_img = modcrop(hr_img, SCALE)
-            _wid, _hei = hr_img.shape
-            for i, (y, x) in enumerate(zip(range(0, _hei - INPUT_SIZE*SCALE, STRIDE_SIZE),
-                                           range(0, _wid - INPUT_SIZE*SCALE, STRIDE_SIZE))):
-                hr_patch = hr_img[x: x+INPUT_SIZE*SCALE, y: y+INPUT_SIZE*SCALE]
-                hr_patch_separete = separate_label(
-                    hr_patch, SCALE)[
-                    :, SHAVE_SIZE + AROUND_SHAVE - 1: -(SHAVE_SIZE + AROUND_SHAVE + 1),
-                    SHAVE_SIZE + AROUND_SHAVE - 1: -(SHAVE_SIZE + AROUND_SHAVE + 1)]
-                hr = np.zeros((SCALE ** 2, LABEL_SIZE-AROUND_SHAVE*2,
-                               LABEL_SIZE-AROUND_SHAVE*2), dtype=np.double)
-                hr[:, :, :] = hr_patch_separete
-                cnn_labels_list.append(hr)
-        cnn_lanels = np.array(cnn_labels_list, dtype=np.uint8)
-        return cnn_lanels
-
     def result_len(self):
+        return self.cnt
+
+    def prepare_dataset(self):
+        cnn_inputs_list = []
+        cnn_labels_list = []
         cnt = 0
+
         for hr_img in self.img_files.read_files():
             hr_img = modcrop(hr_img, SCALE)
-            _wid, _hei = hr_img.shape
-            for i, (y, x) in enumerate(zip(range(0, _hei - INPUT_SIZE*SCALE, STRIDE_SIZE),
-                                           range(0, _wid - INPUT_SIZE*SCALE, STRIDE_SIZE))):
+            _hei, _wid = hr_img.shape
+
+            for y, x in zip(range(0, _hei - INPUT_SIZE*SCALE, STRIDE_SIZE),
+                            range(0, _wid - INPUT_SIZE*SCALE, STRIDE_SIZE)):
+                hr_patch = hr_img[y: y+INPUT_SIZE*SCALE, x: x+INPUT_SIZE*SCALE]
+                hr = separate_label(hr_patch, SCALE)[:, SHAVE_SIZE - 1: -(SHAVE_SIZE + 1),
+                                                     SHAVE_SIZE - 1: -(SHAVE_SIZE + 1)]
+                cnn_labels_list.append(hr)
+
+                lr = cv2.resize(hr_patch, dsize=None, fx=1/SCALE,
+                                fy=1/SCALE, interpolation=cv2.INTER_CUBIC)
+                lr = lr[np.newaxis, :, :]
+                cnn_inputs_list.append(lr)
+
                 cnt += 1
-        return cnt
+        cnn_inputs = np.array(cnn_inputs_list, dtype=np.uint8)
+        cnn_labels = np.array(cnn_labels_list, dtype=np.uint8)
+
+        return cnn_inputs, cnn_labels, cnt
 
 
 class TestDataset(Dataset):
@@ -103,17 +84,23 @@ class TestDataset(Dataset):
         self.transform = transform
 
     def __getitem__(self, index):
-        ref = self.images_files.read_file(index)
-        ref = modcrop(ref, SCALE)
-        input = cv2.resize(ref, dsize=None, fx=1/2, fy=1/2,
-                           interpolation=cv2.INTER_CUBIC)
-        ref = separate_label(ref, SCALE)[:, SHAVE_SIZE - 1: -(SHAVE_SIZE + 1),
-                                         SHAVE_SIZE - 1: -(SHAVE_SIZE + 1)]
-        cnn_input = np.zeros([input.shape[0], input.shape[1], 1], dtype=np.uint8)
-        cnn_input[:, :, 0] = input
-        ref = ref.transpose(1, 2, 0)
+        cnn_label = self.images_files.read_file(index)
+        cnn_label = modcrop(cnn_label, SCALE)
+
+        cnn_input = cv2.resize(cnn_label, dsize=None, fx=1/2, fy=1/2,
+                               interpolation=cv2.INTER_CUBIC)
+        cnn_input = cnn_input[:, :, np.newaxis]
+
+        cnn_label = separate_label(cnn_label, SCALE)
+        cnn_label = cnn_label[:, SHAVE_SIZE - 1: -(SHAVE_SIZE + 1),
+                              SHAVE_SIZE - 1: -(SHAVE_SIZE + 1)]
+        cnn_label = cnn_label.transpose(1, 2, 0)
+
+        cnn_input = cnn_input.astype(np.uint8)
+        cnn_label = cnn_label.astype(np.uint8)
+
         if self.transform:
-            return self.transform(cnn_input), self.transform(ref)
+            return self.transform(cnn_input), self.transform(cnn_label)
 
     def __len__(self):
         return self.images_files.files_len()

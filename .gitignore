@@ -2,3 +2,4 @@
 result/
 model/
 *.pyc
+src/__pycache__/
