@@ -25,3 +25,8 @@ def calc_psnr(ref, img):
         return 100
     PIXEL_MAX = 255.0
     return 20 * math.log10(PIXEL_MAX / math.sqrt(mse))
+
+
+def image_shave(img: np.ndarray, shave_x: int, shave_y: int):
+    return img[shave_x: -shave_x,
+               shave_y: -shave_y, :]

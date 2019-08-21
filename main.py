@@ -20,6 +20,7 @@ from src.utils import confirm_make_folder
 from src.read_dir_imags import ImgInDirAsY
 from torch.nn.functional import relu
 from torch.autograd import Variable
+import time
 
 SCALE = 2
 
@@ -85,7 +86,7 @@ optimizer = optim.SGD(params=lr_params, momentum=0.9, weight_decay=0.0005)
 
 print('Show cnn setting', net, optimizer, sep='\n')
 
-NUM_EPOCH = 100000
+NUM_EPOCH = 1000000
 
 # Prepaer training
 df_all_columns_list = ['epoch', 'train_loss', 'val_loss'].extend(
@@ -135,12 +136,17 @@ for epoch in range(1, NUM_EPOCH+1):
 
             test_file_names = ImgInDirAsY(os.path.join(
                 TEST_DIR, test_dataset_name)).files_name()
-            df_epoch = pd.DataFrame(index=[], columns=['name', 'psnr', 'ssim'])
+            df_epoch = pd.DataFrame(index=[], columns=['name', 'psnr', 'ssim', 'time'])
             for (cnn_input, cnn_label), test_file_name in zip(test_loader, test_file_names):
                 cnn_input = cnn_input.to(device)
                 cnn_label = cnn_label.to(device)
 
+                time_sta = time.perf_counter()
+
                 cnn_output = net(cnn_input)
+
+                time_end = time.perf_counter()
+                tim = time_end - time_sta
 
                 # validation loss
                 loss = criterion(cnn_output, cnn_label)
@@ -167,16 +173,17 @@ for epoch in range(1, NUM_EPOCH+1):
 
                 df_epoch = df_epoch.append(
                     pd.Series(
-                        [image_name, psnr_result, ssim_result],
+                        [image_name, psnr_result, ssim_result, tim],
                         index=df_epoch.columns),
                     ignore_index=True)
 
             # calculation average
             psnr_average = df_epoch['psnr'].mean()
             ssim_average = df_epoch['ssim'].mean()
+            tim_average = df_epoch['time'].mean()
 
             df_epoch = df_epoch.append(
-                pd.Series(['average', psnr_average, ssim_average],
+                pd.Series(['average', psnr_average, ssim_average, time_average],
                           index=df_epoch.columns),
                 ignore_index=True)
 
@@ -189,6 +196,7 @@ for epoch in range(1, NUM_EPOCH+1):
             # add df_epoch result
             df_all_epoch['psnr_{}'.format(test_dataset_name)] = psnr_average
             df_all_epoch['ssim_{}'.format(test_dataset_name)] = ssim_average
+            df_all_epoch['time_{}'.format(test_dataset_name)] = time_average
 
         ave_val_loss = val_loss / val_cnt
     df_all = df_all.append(df_all_epoch, ignore_index=True)

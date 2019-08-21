@@ -11,10 +11,10 @@ import cv2
 import numpy as np
 from src.image_processing import modcrop
 import torchvision.transforms as transforms
+from src.image_processing import image_shave
 
 SCALE = 2
 STRIDE_SIZE = 8
-AROUND_SHAVE = 2
 INPUT_SIZE = 30
 LABEL_SIZE = 20
 SHAVE_SIZE = abs(INPUT_SIZE - LABEL_SIZE) // 2
@@ -26,8 +26,8 @@ class TrainDataset(Dataset):
         self.transform = transform
 
     def __getitem__(self, index):
-        cnn_inputs = self.dataset.get_input(index).transpose(1, 2, 0)
-        cnn_labels = self.dataset.get_label(index).transpose(1, 2, 0)
+        cnn_inputs = self.dataset.get_input(index)
+        cnn_labels = self.dataset.get_label(index)
 
         if self.transform:
             return self.transform(cnn_inputs), self.transform(cnn_labels)
@@ -61,14 +61,15 @@ class SeparateSmallImgs():
 
             for y, x in zip(range(0, _hei - INPUT_SIZE*SCALE, STRIDE_SIZE),
                             range(0, _wid - INPUT_SIZE*SCALE, STRIDE_SIZE)):
-                hr_patch = hr_img[y: y+INPUT_SIZE*SCALE, x: x+INPUT_SIZE*SCALE]
-                hr = separate_label(hr_patch, SCALE)[:, SHAVE_SIZE - 1: -(SHAVE_SIZE + 1),
-                                                     SHAVE_SIZE - 1: -(SHAVE_SIZE + 1)]
+                hr = hr_img[y: y+INPUT_SIZE*SCALE, x: x+INPUT_SIZE*SCALE]
+                hr = separate_label(hr, SCALE)
+                hr = image_shave(hr, SHAVE_SIZE, SHAVE_SIZE)
+
                 cnn_labels_list.append(hr)
 
                 lr = cv2.resize(hr_patch, dsize=None, fx=1/SCALE,
                                 fy=1/SCALE, interpolation=cv2.INTER_CUBIC)
-                lr = lr[np.newaxis, :, :]
+                lr = lr[:, :, np.newaxis]
                 cnn_inputs_list.append(lr)
 
                 cnt += 1
@@ -92,9 +93,7 @@ class TestDataset(Dataset):
         cnn_input = cnn_input[:, :, np.newaxis]
 
         cnn_label = separate_label(cnn_label, SCALE)
-        cnn_label = cnn_label[:, SHAVE_SIZE - 1: -(SHAVE_SIZE + 1),
-                              SHAVE_SIZE - 1: -(SHAVE_SIZE + 1)]
-        cnn_label = cnn_label.transpose(1, 2, 0)
+        cnn_label = image_shave(cnn_label, SHAVE_SIZE, SHAVE_SIZE)
 
         cnn_input = cnn_input.astype(np.uint8)
         cnn_label = cnn_label.astype(np.uint8)
