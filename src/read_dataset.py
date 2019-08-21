@@ -61,8 +61,8 @@ class SeparateSmallImgs():
 
             for y, x in zip(range(0, _hei - INPUT_SIZE*SCALE, STRIDE_SIZE),
                             range(0, _wid - INPUT_SIZE*SCALE, STRIDE_SIZE)):
-                hr = hr_img[y: y+INPUT_SIZE*SCALE, x: x+INPUT_SIZE*SCALE]
-                hr = separate_label(hr, SCALE)
+                hr_patch = hr_img[y: y+INPUT_SIZE*SCALE, x: x+INPUT_SIZE*SCALE]
+                hr = separate_label(hr_patch, SCALE)
                 hr = image_shave(hr, SHAVE_SIZE, SHAVE_SIZE)
 
                 cnn_labels_list.append(hr)
